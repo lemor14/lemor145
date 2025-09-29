@@ -9,9 +9,10 @@
     <style>
         /* Custom styles for canvas visualization */
         #video, #canvas {
-            transform: scaleX(-1); /* Espejo para la cámara frontal, para que se vea natural */
+            /* Transformación inicial para la cámara frontal (user) */
+            transform: scaleX(-1); 
             -webkit-transform: scaleX(-1);
-            filter: grayscale(100%); /* Ayuda a aislar el movimiento al reducir el ruido de color */
+            filter: grayscale(100%); 
         }
         #results-box {
             min-height: 150px;
@@ -34,7 +35,7 @@
         <div class="relative w-full aspect-video bg-black rounded-xl overflow-hidden shadow-lg">
             <!-- El elemento de video es ocultado; se usa solo para capturar el stream -->
             <video id="video" class="absolute inset-0 w-full h-full object-cover hidden" playsinline autoplay></video>
-            <!-- El canvas es donde se dibuja y analiza la imagen (con el efecto espejo) -->
+            <!-- El canvas es donde se dibuja y analiza la imagen -->
             <canvas id="canvas" class="absolute inset-0 w-full h-full object-cover"></canvas>
             <div id="no-camera-message" class="absolute inset-0 flex items-center justify-center bg-gray-900 text-white p-4">
                 Presiona "Iniciar Cámara" para comenzar.
@@ -49,10 +50,10 @@
             
             <div class="flex flex-col md:flex-row w-full md:w-2/3 gap-3">
                 <button id="startCamBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-xl transition duration-200 shadow-md flex-1" onclick="startCamera(currentCameraFacing)">
-                    Iniciar Cámara
+                    Iniciar Cámara (Frontal)
                 </button>
                 <button id="toggleCamBtn" class="bg-indigo-400 hover:bg-indigo-500 text-white font-bold py-3 px-4 rounded-xl transition duration-200 shadow-md flex-1" onclick="toggleCamera()">
-                    Usar Cámara Trasera
+                    Cambiar a Cámara Trasera
                 </button>
             </div>
         </div>
@@ -107,12 +108,15 @@
         const detectBtn = document.getElementById('detectBtn');
         const calculateBtn = document.getElementById('calculateBtn');
         const thresholdSlider = document.getElementById('thresholdSlider');
+        const toggleCamBtn = document.getElementById('toggleCamBtn');
+        const startCamBtn = document.getElementById('startCamBtn');
         const noCameraMessage = document.getElementById('no-camera-message');
 
         let previousImageData = null;
         let detectionInterval = null;
         let isDetecting = false;
-        let currentCameraFacing = 'user'; // 'user' (delantera) o 'environment' (trasera)
+        // La cámara por defecto es 'user' (frontal)
+        let currentCameraFacing = 'user'; 
         let videoStream = null;
 
         // Variables de cronometraje
@@ -142,7 +146,7 @@
             console.warn("Firebase no inicializado: Falta __firebase_config.");
         }
 
-        // --- Lógica de Cámara y Cambio de Facing Mode (Solicitud del Usuario) ---
+        // --- Lógica de Cámara y Cambio de Facing Mode ---
 
         /**
          * Inicia el stream de la cámara con el modo de enfrentamiento especificado.
@@ -150,7 +154,7 @@
          */
         export async function startCamera(facingMode) {
             if (videoStream) {
-                // Detener todas las pistas de video del stream anterior
+                // Detener todas las pistas de video del stream anterior antes de iniciar uno nuevo
                 videoStream.getTracks().forEach(track => track.stop());
             }
 
@@ -159,7 +163,7 @@
                     video: {
                         width: { ideal: 640 },
                         height: { ideal: 480 },
-                        facingMode: facingMode // Aquí se define qué cámara usar
+                        facingMode: facingMode // <--- CLAVE PARA ELEGIR CÁMARA
                     }
                 };
                 
@@ -167,18 +171,24 @@
                 video.srcObject = videoStream;
                 video.onloadedmetadata = () => {
                     video.play();
-                    // Asegura que el canvas tenga el mismo tamaño que el video para la extracción de píxeles
                     canvas.width = video.videoWidth;
                     canvas.height = video.videoHeight;
                     noCameraMessage.classList.add('hidden');
                 };
 
-                // Actualiza el estado global de la cámara
+                // 1. Actualiza el estado global de la cámara
                 currentCameraFacing = facingMode;
                 
-                // Actualiza el texto del botón para indicar el siguiente cambio
-                document.getElementById('toggleCamBtn').textContent = 
-                    (facingMode === 'user' ? 'Usar Cámara Trasera' : 'Usar Cámara Delantera');
+                // 2. Ajusta el efecto espejo (transform) y el texto del botón
+                if (facingMode === 'user') {
+                    canvas.style.transform = 'scaleX(-1)';
+                    startCamBtn.textContent = 'CÁMARA INICIADA (Frontal)';
+                    toggleCamBtn.textContent = 'Cambiar a Cámara Trasera';
+                } else {
+                    canvas.style.transform = 'scaleX(1)';
+                    startCamBtn.textContent = 'CÁMARA INICIADA (Trasera)';
+                    toggleCamBtn.textContent = 'Cambiar a Cámara Frontal';
+                }
                 
                 statusIndicator.textContent = 'CÁMARA ACTIVA';
                 statusIndicator.style.backgroundColor = '#d1fae5';
@@ -191,6 +201,14 @@
 
             } catch (err) {
                 console.error("Error al acceder a la cámara:", err);
+                // Intenta cambiar de cámara automáticamente si falla el modo seleccionado
+                if (err.name === "OverconstrainedError" && facingMode === 'environment') {
+                    // Si falla la trasera, intenta la frontal
+                    console.warn("Fallo cámara trasera. Intentando frontal.");
+                    startCamera('user');
+                    return; 
+                }
+                
                 statusIndicator.textContent = `ERROR: ${err.name}`;
                 statusIndicator.style.backgroundColor = '#fecaca';
                 statusIndicator.style.color = '#991b1b';
@@ -202,16 +220,9 @@
          * Alterna el modo de la cámara entre 'user' (delantera) y 'environment' (trasera).
          */
         export function toggleCamera() {
-            // Invierte el modo actual
+            // Invierte el modo actual y llama a iniciar la cámara con el nuevo modo
             const newFacingMode = currentCameraFacing === 'user' ? 'environment' : 'user';
             startCamera(newFacingMode);
-
-            // También invertimos el efecto espejo si vamos a la cámara trasera
-            if (newFacingMode === 'environment') {
-                canvas.style.transform = 'scaleX(1)';
-            } else {
-                canvas.style.transform = 'scaleX(-1)';
-            }
         }
 
         // --- Lógica de Detección de Movimiento (Frame Differencing) ---
@@ -261,7 +272,7 @@
                 if (startTime === 0 && motionPixels > MOVEMENT_THRESHOLD) {
                     // INICIO DE MOVIMIENTO
                     startTime = Date.now();
-                    endTime = 0; // Reiniciar por seguridad
+                    endTime = 0; 
                     statusIndicator.textContent = 'ESTADO: 🔴 MOVIMIENTO ACTIVO';
                     statusIndicator.style.backgroundColor = '#fef2f2';
                     statusIndicator.style.color = '#dc2626';
@@ -292,7 +303,8 @@
          */
         export function toggleDetection(start) {
             if (!videoStream) {
-                alert("Primero debes iniciar la cámara.");
+                // Usar mensaje personalizado en lugar de alert()
+                resultsBox.innerHTML = '<span class="text-red-600 font-bold">Error:</span> Primero debe iniciar la cámara.';
                 return;
             }
 
@@ -303,9 +315,11 @@
                 endTime = 0;
                 previousImageData = null;
                 detectionInterval = setInterval(detectMotion, 100); // 10 FPS
+                
                 detectBtn.textContent = 'DETENER DETECCIÓN';
                 detectBtn.classList.replace('bg-emerald-600', 'bg-rose-600');
                 detectBtn.classList.replace('hover:bg-emerald-700', 'hover:bg-rose-700');
+                
                 statusIndicator.textContent = 'ESTADO: EN ESPERA';
                 statusIndicator.style.backgroundColor = '#f0f9ff';
                 statusIndicator.style.color = '#0284c7';
@@ -316,12 +330,14 @@
                 // Detener detección (forzada)
                 clearInterval(detectionInterval);
                 isDetecting = false;
+                
                 if (startTime !== 0 && endTime === 0) {
                     // Si se detiene manualmente mientras está activo
                     endTime = Date.now(); 
                     resultsBox.innerHTML = `Detección detenida manualmente. Tiempo medido: ${((endTime - startTime) / 1000).toFixed(2)} segundos.`;
                     calculateBtn.classList.remove('hidden');
                 }
+
                 detectBtn.textContent = 'REINICIAR DETECCIÓN DE MOVIMIENTO';
                 detectBtn.classList.replace('bg-rose-600', 'bg-emerald-600');
                 detectBtn.classList.replace('hover:bg-rose-700', 'hover:bg-emerald-700');
@@ -341,7 +357,7 @@
             const t = (endTime - startTime) / 1000;
             
             if (isNaN(v) || v <= 0) {
-                resultsBox.innerHTML = 'Por favor, ingresa una velocidad de referencia válida.';
+                resultsBox.innerHTML = 'Por favor, ingresa una velocidad de referencia válida (mayor que 0).';
                 return;
             }
 
@@ -359,8 +375,7 @@
 
         // Inicialización al cargar la ventana
         window.onload = () => {
-             // Intenta iniciar la cámara por defecto (frontal)
-             // startCamera(currentCameraFacing); // Mejor esperar al click del usuario.
+             // Dejamos que el usuario inicie la cámara al hacer click por primera vez.
         };
 
     </script>
