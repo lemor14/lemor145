@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Medición de Movimiento por Píxeles</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles for canvas visualization */
+        #video, #canvas {
+            transform: scaleX(-1); /* Espejo para la cámara frontal, para que se vea natural */
+            -webkit-transform: scaleX(-1);
+            filter: grayscale(100%); /* Ayuda a aislar el movimiento al reducir el ruido de color */
+        }
+        #results-box {
+            min-height: 150px;
+        }
+        .container {
+            max-width: 95vw;
+            margin: 0 auto;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen font-sans text-gray-800 p-4">
+
+    <div class="container bg-white shadow-xl rounded-2xl p-6 space-y-6 md:space-y-8">
+        <header class="text-center">
+            <h1 class="text-3xl font-extrabold text-indigo-700">Detector de Movimiento Cinemático</h1>
+            <p class="text-sm text-gray-500 mt-1">Detección de Movimiento por Diferencia de Píxeles (MRU: $e = v \cdot t$)</p>
+        </header>
+
+        <!-- Contenedor de Video y Canvas -->
+        <div class="relative w-full aspect-video bg-black rounded-xl overflow-hidden shadow-lg">
+            <!-- El elemento de video es ocultado; se usa solo para capturar el stream -->
+            <video id="video" class="absolute inset-0 w-full h-full object-cover hidden" playsinline autoplay></video>
+            <!-- El canvas es donde se dibuja y analiza la imagen (con el efecto espejo) -->
+            <canvas id="canvas" class="absolute inset-0 w-full h-full object-cover"></canvas>
+            <div id="no-camera-message" class="absolute inset-0 flex items-center justify-center bg-gray-900 text-white p-4">
+                Presiona "Iniciar Cámara" para comenzar.
+            </div>
+        </div>
+        
+        <!-- Indicador de Estado y Controles -->
+        <div class="flex flex-col md:flex-row gap-4">
+            <div id="status-indicator" class="flex-shrink-0 w-full md:w-1/3 p-4 rounded-xl shadow-inner text-center font-bold" style="background-color: #fce7f3; color: #9d174d;">
+                ESTADO: INACTIVO
+            </div>
+            
+            <div class="flex flex-col md:flex-row w-full md:w-2/3 gap-3">
+                <button id="startCamBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-xl transition duration-200 shadow-md flex-1" onclick="startCamera(currentCameraFacing)">
+                    Iniciar Cámara
+                </button>
+                <button id="toggleCamBtn" class="bg-indigo-400 hover:bg-indigo-500 text-white font-bold py-3 px-4 rounded-xl transition duration-200 shadow-md flex-1" onclick="toggleCamera()">
+                    Usar Cámara Trasera
+                </button>
+            </div>
+        </div>
+
+        <!-- Inputs de Parámetros -->
+        <div class="bg-gray-50 p-5 rounded-xl space-y-4 shadow-inner">
+            <h2 class="text-xl font-semibold text-indigo-600 border-b pb-2">Parámetros de Medición</h2>
+            
+            <!-- Velocidad (v) -->
+            <div>
+                <label for="velocityInput" class="block text-sm font-medium text-gray-700">Velocidad de Referencia ($v$) en m/s:</label>
+                <input type="number" id="velocityInput" value="1.5" step="0.1" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-3 focus:ring-indigo-500 focus:border-indigo-500" placeholder="Ej: 1.5 (caminando)">
+            </div>
+            
+            <!-- Sensibilidad (Umbral) -->
+            <div>
+                <label for="thresholdSlider" class="block text-sm font-medium text-gray-700">Sensibilidad de Detección (Umbral de $\Delta$ Píxeles): <span id="thresholdValue" class="font-mono text-indigo-600">30</span></label>
+                <input type="range" id="thresholdSlider" min="10" max="100" value="30" oninput="document.getElementById('thresholdValue').textContent = this.value" class="mt-1 w-full h-2 bg-gray-300 rounded-lg appearance-none cursor-pointer range-lg">
+            </div>
+
+            <!-- Botón de Detección/Cálculo -->
+            <button id="detectBtn" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-xl transition duration-200 shadow-lg mt-4" onclick="toggleDetection(true)">
+                INICIAR DETECCIÓN DE MOVIMIENTO
+            </button>
+        </div>
+
+        <!-- Resultados -->
+        <div class="bg-blue-50 p-5 rounded-xl shadow-lg">
+            <h2 class="text-xl font-semibold text-blue-700 border-b pb-2">Resultados y Cálculo de Distancia</h2>
+            <div id="results-box" class="mt-3 text-lg font-mono text-gray-700">
+                Esperando medición...
+            </div>
+            <button id="calculateBtn" class="mt-4 w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl transition duration-200 shadow-md hidden" onclick="calculateDistance()">
+                CALCULAR DISTANCIA ($e = v \cdot t$)
+            </button>
+        </div>
+
+    </div>
+
+    <script type="module">
+        // Importaciones de Firebase (necesarias para el entorno Canvas, aunque no se use Firestore aquí)
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- Configuración y Variables Globales ---
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const statusIndicator = document.getElementById('status-indicator');
+        const resultsBox = document.getElementById('results-box');
+        const detectBtn = document.getElementById('detectBtn');
+        const calculateBtn = document.getElementById('calculateBtn');
+        const thresholdSlider = document.getElementById('thresholdSlider');
+        const noCameraMessage = document.getElementById('no-camera-message');
+
+        let previousImageData = null;
+        let detectionInterval = null;
+        let isDetecting = false;
+        let currentCameraFacing = 'user'; // 'user' (delantera) o 'environment' (trasera)
+        let videoStream = null;
+
+        // Variables de cronometraje
+        let startTime = 0;
+        let endTime = 0;
+        const MOVEMENT_THRESHOLD = 100; // Píxeles mínimos para iniciar
+        const INACTIVE_THRESHOLD = 50;  // Píxeles máximos para detener
+
+        // --- Firebase Initialization (Mandatory Setup) ---
+        let db, auth;
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        if (Object.keys(firebaseConfig).length > 0) {
+            const app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+            
+            // Autenticación inicial
+            if (initialAuthToken) {
+                signInWithCustomToken(auth, initialAuthToken).catch(e => console.error("Error al iniciar sesión con token personalizado:", e));
+            } else {
+                signInAnonymously(auth).catch(e => console.error("Error al iniciar sesión anónimamente:", e));
+            }
+        } else {
+            console.warn("Firebase no inicializado: Falta __firebase_config.");
+        }
+
+        // --- Lógica de Cámara y Cambio de Facing Mode (Solicitud del Usuario) ---
+
+        /**
+         * Inicia el stream de la cámara con el modo de enfrentamiento especificado.
+         * @param {string} facingMode 'user' (delantera) o 'environment' (trasera).
+         */
+        export async function startCamera(facingMode) {
+            if (videoStream) {
+                // Detener todas las pistas de video del stream anterior
+                videoStream.getTracks().forEach(track => track.stop());
+            }
+
+            try {
+                const constraints = {
+                    video: {
+                        width: { ideal: 640 },
+                        height: { ideal: 480 },
+                        facingMode: facingMode // Aquí se define qué cámara usar
+                    }
+                };
+                
+                videoStream = await navigator.mediaDevices.getUserMedia(constraints);
+                video.srcObject = videoStream;
+                video.onloadedmetadata = () => {
+                    video.play();
+                    // Asegura que el canvas tenga el mismo tamaño que el video para la extracción de píxeles
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    noCameraMessage.classList.add('hidden');
+                };
+
+                // Actualiza el estado global de la cámara
+                currentCameraFacing = facingMode;
+                
+                // Actualiza el texto del botón para indicar el siguiente cambio
+                document.getElementById('toggleCamBtn').textContent = 
+                    (facingMode === 'user' ? 'Usar Cámara Trasera' : 'Usar Cámara Delantera');
+                
+                statusIndicator.textContent = 'CÁMARA ACTIVA';
+                statusIndicator.style.backgroundColor = '#d1fae5';
+                statusIndicator.style.color = '#065f46';
+
+                // Si la detección estaba activa, se reinicia para usar la nueva fuente
+                if (isDetecting) {
+                    toggleDetection(true);
+                }
+
+            } catch (err) {
+                console.error("Error al acceder a la cámara:", err);
+                statusIndicator.textContent = `ERROR: ${err.name}`;
+                statusIndicator.style.backgroundColor = '#fecaca';
+                statusIndicator.style.color = '#991b1b';
+                noCameraMessage.classList.remove('hidden');
+            }
+        }
+
+        /**
+         * Alterna el modo de la cámara entre 'user' (delantera) y 'environment' (trasera).
+         */
+        export function toggleCamera() {
+            // Invierte el modo actual
+            const newFacingMode = currentCameraFacing === 'user' ? 'environment' : 'user';
+            startCamera(newFacingMode);
+
+            // También invertimos el efecto espejo si vamos a la cámara trasera
+            if (newFacingMode === 'environment') {
+                canvas.style.transform = 'scaleX(1)';
+            } else {
+                canvas.style.transform = 'scaleX(-1)';
+            }
+        }
+
+        // --- Lógica de Detección de Movimiento (Frame Differencing) ---
+
+        /**
+         * Bucle principal de detección de movimiento, se ejecuta cada 100ms.
+         */
+        function detectMotion() {
+            if (video.videoWidth === 0 || video.videoHeight === 0) return;
+
+            // 1. Dibuja el frame actual en el canvas
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            let currentImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            let motionPixels = 0;
+            const threshold = parseInt(thresholdSlider.value);
+            const data = currentImageData.data;
+
+            if (previousImageData) {
+                const prevData = previousImageData.data;
+                const len = data.length;
+
+                // 2. Compara píxeles (Diferencia Absoluta)
+                for (let i = 0; i < len; i += 4) {
+                    const r1 = data[i];
+                    const g1 = data[i + 1];
+                    const b1 = data[i + 2];
+
+                    const r2 = prevData[i];
+                    const g2 = prevData[i + 1];
+                    const b2 = prevData[i + 2];
+
+                    // Fórmula de Diferencia: |R_n - R_{n-1}| + |G_n - G_{n-1}| + |B_n - B_{n-1}|
+                    const diff = Math.abs(r1 - r2) + Math.abs(g1 - g2) + Math.abs(b1 - b2);
+
+                    // 3. Aplica Umbral y Resalta
+                    if (diff > threshold) {
+                        motionPixels++;
+                        // Resaltar en rojo el píxel detectado en el canvas
+                        data[i] = 255;      // R
+                        data[i + 1] = 0;    // G
+                        data[i + 2] = 0;    // B
+                        data[i + 3] = 255;  // A
+                    }
+                }
+
+                // 4. Lógica del Cronómetro
+                if (startTime === 0 && motionPixels > MOVEMENT_THRESHOLD) {
+                    // INICIO DE MOVIMIENTO
+                    startTime = Date.now();
+                    endTime = 0; // Reiniciar por seguridad
+                    statusIndicator.textContent = 'ESTADO: 🔴 MOVIMIENTO ACTIVO';
+                    statusIndicator.style.backgroundColor = '#fef2f2';
+                    statusIndicator.style.color = '#dc2626';
+                    resultsBox.innerHTML = `Movimiento detectado. Cronómetro iniciado...`;
+                    calculateBtn.classList.add('hidden');
+
+                } else if (startTime !== 0 && endTime === 0 && motionPixels < INACTIVE_THRESHOLD) {
+                    // FIN DE MOVIMIENTO (detención automática)
+                    endTime = Date.now();
+                    statusIndicator.textContent = 'ESTADO: ✅ MOVIMIENTO DETENIDO';
+                    statusIndicator.style.backgroundColor = '#ecfdf5';
+                    statusIndicator.style.color = '#059669';
+                    resultsBox.innerHTML = `Movimiento finalizado. Tiempo medido: ${((endTime - startTime) / 1000).toFixed(2)} segundos.`;
+                    calculateBtn.classList.remove('hidden');
+                }
+
+                // 5. Vuelve a dibujar la imagen con los resaltados rojos
+                ctx.putImageData(currentImageData, 0, 0);
+
+            }
+            // Guarda el frame actual como el frame anterior para el siguiente ciclo
+            previousImageData = currentImageData;
+        }
+
+        /**
+         * Inicia o detiene el bucle de detección.
+         * @param {boolean} start Si es true, inicia; si es false, detiene.
+         */
+        export function toggleDetection(start) {
+            if (!videoStream) {
+                alert("Primero debes iniciar la cámara.");
+                return;
+            }
+
+            if (start && !isDetecting) {
+                // Iniciar detección
+                isDetecting = true;
+                startTime = 0;
+                endTime = 0;
+                previousImageData = null;
+                detectionInterval = setInterval(detectMotion, 100); // 10 FPS
+                detectBtn.textContent = 'DETENER DETECCIÓN';
+                detectBtn.classList.replace('bg-emerald-600', 'bg-rose-600');
+                detectBtn.classList.replace('hover:bg-emerald-700', 'hover:bg-rose-700');
+                statusIndicator.textContent = 'ESTADO: EN ESPERA';
+                statusIndicator.style.backgroundColor = '#f0f9ff';
+                statusIndicator.style.color = '#0284c7';
+                resultsBox.innerHTML = 'Cronómetro en espera. Mueve un objeto para iniciar...';
+                calculateBtn.classList.add('hidden');
+
+            } else if (!start && isDetecting) {
+                // Detener detección (forzada)
+                clearInterval(detectionInterval);
+                isDetecting = false;
+                if (startTime !== 0 && endTime === 0) {
+                    // Si se detiene manualmente mientras está activo
+                    endTime = Date.now(); 
+                    resultsBox.innerHTML = `Detección detenida manualmente. Tiempo medido: ${((endTime - startTime) / 1000).toFixed(2)} segundos.`;
+                    calculateBtn.classList.remove('hidden');
+                }
+                detectBtn.textContent = 'REINICIAR DETECCIÓN DE MOVIMIENTO';
+                detectBtn.classList.replace('bg-rose-600', 'bg-emerald-600');
+                detectBtn.classList.replace('hover:bg-rose-700', 'hover:bg-emerald-700');
+            }
+        }
+
+        /**
+         * Ejecuta el cálculo final de la distancia.
+         */
+        export function calculateDistance() {
+            if (startTime === 0 || endTime === 0) {
+                resultsBox.innerHTML = 'Por favor, realiza y finaliza una medición primero.';
+                return;
+            }
+
+            const v = parseFloat(document.getElementById('velocityInput').value);
+            const t = (endTime - startTime) / 1000;
+            
+            if (isNaN(v) || v <= 0) {
+                resultsBox.innerHTML = 'Por favor, ingresa una velocidad de referencia válida.';
+                return;
+            }
+
+            const e = v * t;
+
+            resultsBox.innerHTML = `
+                <div class="font-bold text-lg text-blue-800 mb-2">Pasos del Cálculo ($e = v \cdot t$)</div>
+                <div class="space-y-1">
+                    <p>Tiempo medido ($t$): <span class="text-indigo-600">${t.toFixed(2)} s</span></p>
+                    <p>Velocidad de referencia ($v$): <span class="text-indigo-600">${v.toFixed(2)} m/s</span></p>
+                    <p class="font-extrabold text-xl text-green-700 pt-2">Distancia Recorrida ($e$): <span class="text-3xl">${e.toFixed(3)} m</span></p>
+                </div>
+            `;
+        }
+
+        // Inicialización al cargar la ventana
+        window.onload = () => {
+             // Intenta iniciar la cámara por defecto (frontal)
+             // startCamera(currentCameraFacing); // Mejor esperar al click del usuario.
+        };
+
+    </script>
+</body>
+</html>
