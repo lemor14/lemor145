@@ -3,381 +3,561 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema de Medición de Movimiento por Píxeles</title>
-    <!-- Tailwind CSS CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
+    <title>Calculadora de Distancia - e = v·t</title>
     <style>
-        /* Custom styles for canvas visualization */
-        #video, #canvas {
-            /* Transformación inicial para la cámara frontal (user) */
-            transform: scaleX(-1); 
-            -webkit-transform: scaleX(-1);
-            filter: grayscale(100%); 
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
-        #results-box {
-            min-height: 150px;
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: white;
+            overflow-x: hidden;
         }
+
         .container {
-            max-width: 95vw;
+            max-width: 1200px;
             margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            animation: slideDown 0.8s ease-out;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .formula {
+            font-size: 1.5rem;
+            background: rgba(255,255,255,0.2);
+            padding: 15px 30px;
+            border-radius: 25px;
+            backdrop-filter: blur(10px);
+            display: inline-block;
+            margin-bottom: 20px;
+            animation: glow 2s infinite alternate;
+        }
+
+        @keyframes slideDown {
+            from { transform: translateY(-50px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        @keyframes glow {
+            from { box-shadow: 0 0 20px rgba(255,255,255,0.3); }
+            to { box-shadow: 0 0 30px rgba(255,255,255,0.6); }
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            align-items: start;
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .camera-section {
+            background: rgba(255,255,255,0.1);
+            padding: 25px;
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+
+        .controls-section {
+            background: rgba(255,255,255,0.1);
+            padding: 25px;
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+
+        #video {
+            width: 100%;
+            height: 300px;
+            border-radius: 15px;
+            object-fit: cover;
+            border: 3px solid rgba(255,255,255,0.3);
+            transition: all 0.3s ease;
+        }
+
+        #video:hover {
+            transform: scale(1.02);
+            border-color: rgba(255,255,255,0.6);
+        }
+
+        .btn {
+            background: linear-gradient(45deg, #ff6b6b, #ee5a24);
+            border: none;
+            padding: 12px 25px;
+            border-radius: 25px;
+            color: white;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            margin: 10px 5px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn.success {
+            background: linear-gradient(45deg, #00b894, #00a085);
+        }
+
+        .btn.warning {
+            background: linear-gradient(45deg, #fdcb6e, #e17055);
+        }
+
+        .input-group {
+            margin: 15px 0;
+        }
+
+        .input-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #f8f9fa;
+        }
+
+        .input-group input {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1rem;
+            background: rgba(255,255,255,0.9);
+            color: #333;
+            transition: all 0.3s ease;
+        }
+
+        .input-group input:focus {
+            outline: none;
+            background: white;
+            transform: scale(1.02);
+        }
+
+        .results {
+            background: rgba(0,0,0,0.3);
+            padding: 20px;
+            border-radius: 15px;
+            margin-top: 20px;
+            border-left: 4px solid #00b894;
+        }
+
+        .results h3 {
+            margin-bottom: 15px;
+            color: #00b894;
+        }
+
+        .result-item {
+            display: flex;
+            justify-content: space-between;
+            margin: 10px 0;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .result-item:last-child {
+            border-bottom: none;
+        }
+
+        .motion-indicator {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #ff6b6b;
+            display: inline-block;
+            margin-right: 10px;
+            transition: all 0.3s ease;
+        }
+
+        .motion-indicator.active {
+            background: #00b894;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+            100% { transform: scale(1); }
+        }
+
+        .status {
+            text-align: center;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 10px;
+            font-weight: bold;
+        }
+
+        .status.info {
+            background: rgba(52, 152, 219, 0.3);
+            border: 1px solid #3498db;
+        }
+
+        .status.success {
+            background: rgba(39, 174, 96, 0.3);
+            border: 1px solid #27ae60;
+        }
+
+        .canvas-container {
+            position: relative;
+            margin-top: 15px;
+        }
+
+        #canvas {
+            width: 100%;
+            height: 200px;
+            border-radius: 10px;
+            background: rgba(0,0,0,0.3);
+            border: 2px solid rgba(255,255,255,0.2);
+        }
+
+        .calculation-steps {
+            background: rgba(0,0,0,0.2);
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 15px;
+        }
+
+        .calculation-steps h4 {
+            color: #fdcb6e;
+            margin-bottom: 10px;
+        }
+
+        .step {
+            margin: 8px 0;
+            font-family: 'Courier New', monospace;
+            background: rgba(255,255,255,0.1);
+            padding: 5px 10px;
+            border-radius: 5px;
         }
     </style>
 </head>
-<body class="bg-gray-100 min-h-screen font-sans text-gray-800 p-4">
-
-    <div class="container bg-white shadow-xl rounded-2xl p-6 space-y-6 md:space-y-8">
-        <header class="text-center">
-            <h1 class="text-3xl font-extrabold text-indigo-700">Detector de Movimiento Cinemático</h1>
-            <p class="text-sm text-gray-500 mt-1">Detección de Movimiento por Diferencia de Píxeles (MRU: $e = v \cdot t$)</p>
-        </header>
-
-        <!-- Contenedor de Video y Canvas -->
-        <div class="relative w-full aspect-video bg-black rounded-xl overflow-hidden shadow-lg">
-            <!-- El elemento de video es ocultado; se usa solo para capturar el stream -->
-            <video id="video" class="absolute inset-0 w-full h-full object-cover hidden" playsinline autoplay></video>
-            <!-- El canvas es donde se dibuja y analiza la imagen -->
-            <canvas id="canvas" class="absolute inset-0 w-full h-full object-cover"></canvas>
-            <div id="no-camera-message" class="absolute inset-0 flex items-center justify-center bg-gray-900 text-white p-4">
-                Presiona "Iniciar Cámara" para comenzar.
-            </div>
-        </div>
-        
-        <!-- Indicador de Estado y Controles -->
-        <div class="flex flex-col md:flex-row gap-4">
-            <div id="status-indicator" class="flex-shrink-0 w-full md:w-1/3 p-4 rounded-xl shadow-inner text-center font-bold" style="background-color: #fce7f3; color: #9d174d;">
-                ESTADO: INACTIVO
-            </div>
-            
-            <div class="flex flex-col md:flex-row w-full md:w-2/3 gap-3">
-                <button id="startCamBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-xl transition duration-200 shadow-md flex-1" onclick="startCamera(currentCameraFacing)">
-                    Iniciar Cámara (Frontal)
-                </button>
-                <button id="toggleCamBtn" class="bg-indigo-400 hover:bg-indigo-500 text-white font-bold py-3 px-4 rounded-xl transition duration-200 shadow-md flex-1" onclick="toggleCamera()">
-                    Cambiar a Cámara Trasera
-                </button>
-            </div>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎯 Calculadora de Distancia con Cámara</h1>
+            <div class="formula">e = v × t</div>
+            <p>Detecta movimiento y calcula la distancia recorrida</p>
         </div>
 
-        <!-- Inputs de Parámetros -->
-        <div class="bg-gray-50 p-5 rounded-xl space-y-4 shadow-inner">
-            <h2 class="text-xl font-semibold text-indigo-600 border-b pb-2">Parámetros de Medición</h2>
-            
-            <!-- Velocidad (v) -->
-            <div>
-                <label for="velocityInput" class="block text-sm font-medium text-gray-700">Velocidad de Referencia ($v$) en m/s:</label>
-                <input type="number" id="velocityInput" value="1.5" step="0.1" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-3 focus:ring-indigo-500 focus:border-indigo-500" placeholder="Ej: 1.5 (caminando)">
-            </div>
-            
-            <!-- Sensibilidad (Umbral) -->
-            <div>
-                <label for="thresholdSlider" class="block text-sm font-medium text-gray-700">Sensibilidad de Detección (Umbral de $\Delta$ Píxeles): <span id="thresholdValue" class="font-mono text-indigo-600">30</span></label>
-                <input type="range" id="thresholdSlider" min="10" max="100" value="30" oninput="document.getElementById('thresholdValue').textContent = this.value" class="mt-1 w-full h-2 bg-gray-300 rounded-lg appearance-none cursor-pointer range-lg">
+        <div class="main-content">
+            <div class="camera-section">
+                <h2>📹 Cámara y Detección de Movimiento</h2>
+                <video id="video" autoplay muted></video>
+                
+                <div class="canvas-container">
+                    <canvas id="canvas"></canvas>
+                </div>
+                
+                <div style="text-align: center; margin-top: 15px;">
+                    <button id="startCamera" class="btn">🎥 Iniciar Cámara</button>
+                    <button id="switchCamera" class="btn" disabled>🔄 Cambiar Cámara</button>
+                    <button id="startDetection" class="btn success" disabled>🔍 Detectar Movimiento</button>
+                    <button id="stopDetection" class="btn warning" disabled>⏹️ Detener</button>
+                </div>
+
+                <div class="status info">
+                    <span class="motion-indicator" id="motionIndicator"></span>
+                    <span id="statusText">Presiona "Iniciar Cámara" para comenzar</span>
+                </div>
             </div>
 
-            <!-- Botón de Detección/Cálculo -->
-            <button id="detectBtn" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-xl transition duration-200 shadow-lg mt-4" onclick="toggleDetection(true)">
-                INICIAR DETECCIÓN DE MOVIMIENTO
-            </button>
+            <div class="controls-section">
+                <h2>⚙️ Parámetros de Cálculo</h2>
+                
+                <div class="input-group">
+                    <label for="velocity">🏃‍♂️ Velocidad (v) - metros/segundo:</label>
+                    <input type="number" id="velocity" value="1.5" step="0.1" min="0">
+                </div>
+
+                <div class="input-group">
+                    <label for="pixelToMeter">📏 Conversión píxel a metro:</label>
+                    <input type="number" id="pixelToMeter" value="0.01" step="0.001" min="0.001">
+                </div>
+
+                <div class="input-group">
+                    <label for="sensitivityThreshold">🎛️ Sensibilidad de detección:</label>
+                    <input type="range" id="sensitivityThreshold" min="10" max="100" value="30">
+                    <span id="sensitivityValue">30</span>
+                </div>
+
+                <button id="calculateDistance" class="btn">🧮 Calcular Distancia</button>
+
+                <div class="results" id="results" style="display: none;">
+                    <h3>📊 Resultados</h3>
+                    <div class="result-item">
+                        <span>Tiempo transcurrido (t):</span>
+                        <span id="timeResult">0 segundos</span>
+                    </div>
+                    <div class="result-item">
+                        <span>Velocidad (v):</span>
+                        <span id="velocityResult">0 m/s</span>
+                    </div>
+                    <div class="result-item">
+                        <span>Distancia (e):</span>
+                        <span id="distanceResult">0 metros</span>
+                    </div>
+                    <div class="result-item">
+                        <span>Movimiento detectado:</span>
+                        <span id="motionPixels">0 píxeles</span>
+                    </div>
+                </div>
+
+                <div class="calculation-steps" id="calculationSteps" style="display: none;">
+                    <h4>🔢 Pasos del Cálculo</h4>
+                    <div class="step" id="step1"></div>
+                    <div class="step" id="step2"></div>
+                    <div class="step" id="step3"></div>
+                </div>
+            </div>
         </div>
-
-        <!-- Resultados -->
-        <div class="bg-blue-50 p-5 rounded-xl shadow-lg">
-            <h2 class="text-xl font-semibold text-blue-700 border-b pb-2">Resultados y Cálculo de Distancia</h2>
-            <div id="results-box" class="mt-3 text-lg font-mono text-gray-700">
-                Esperando medición...
-            </div>
-            <button id="calculateBtn" class="mt-4 w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl transition duration-200 shadow-md hidden" onclick="calculateDistance()">
-                CALCULAR DISTANCIA ($e = v \cdot t$)
-            </button>
-        </div>
-
     </div>
 
-    <script type="module">
-        // Importaciones de Firebase (necesarias para el entorno Canvas, aunque no se use Firestore aquí)
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-        // --- Configuración y Variables Globales ---
-        const video = document.getElementById('video');
-        const canvas = document.getElementById('canvas');
-        const ctx = canvas.getContext('2d');
-        const statusIndicator = document.getElementById('status-indicator');
-        const resultsBox = document.getElementById('results-box');
-        const detectBtn = document.getElementById('detectBtn');
-        const calculateBtn = document.getElementById('calculateBtn');
-        const thresholdSlider = document.getElementById('thresholdSlider');
-        const toggleCamBtn = document.getElementById('toggleCamBtn');
-        const startCamBtn = document.getElementById('startCamBtn');
-        const noCameraMessage = document.getElementById('no-camera-message');
-
-        let previousImageData = null;
-        let detectionInterval = null;
+    <script>
+        // Variables globales
+        let video = document.getElementById('video');
+        let canvas = document.getElementById('canvas');
+        let ctx = canvas.getContext('2d');
+        let stream = null;
         let isDetecting = false;
-        // La cámara por defecto es 'user' (frontal)
-        let currentCameraFacing = 'user'; 
-        let videoStream = null;
+        let startTime = null;
+        let endTime = null;
+        let previousImageData = null;
+        let motionPixelCount = 0;
+        let detectionInterval = null;
+        let currentFacingMode = 'user'; // 'user' para frontal, 'environment' para trasera
 
-        // Variables de cronometraje
-        let startTime = 0;
-        let endTime = 0;
-        const MOVEMENT_THRESHOLD = 100; // Píxeles mínimos para iniciar
-        const INACTIVE_THRESHOLD = 50;  // Píxeles máximos para detener
+        // Referencias a elementos del DOM
+        const startCameraBtn = document.getElementById('startCamera');
+        const switchCameraBtn = document.getElementById('switchCamera');
+        const startDetectionBtn = document.getElementById('startDetection');
+        const stopDetectionBtn = document.getElementById('stopDetection');
+        const calculateBtn = document.getElementById('calculateDistance');
+        const statusText = document.getElementById('statusText');
+        const motionIndicator = document.getElementById('motionIndicator');
+        const sensitivitySlider = document.getElementById('sensitivityThreshold');
+        const sensitivityValue = document.getElementById('sensitivityValue');
+        const results = document.getElementById('results');
+        const calculationSteps = document.getElementById('calculationSteps');
 
-        // --- Firebase Initialization (Mandatory Setup) ---
-        let db, auth;
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-
-        if (Object.keys(firebaseConfig).length > 0) {
-            const app = initializeApp(firebaseConfig);
-            db = getFirestore(app);
-            auth = getAuth(app);
-            
-            // Autenticación inicial
-            if (initialAuthToken) {
-                signInWithCustomToken(auth, initialAuthToken).catch(e => console.error("Error al iniciar sesión con token personalizado:", e));
-            } else {
-                signInAnonymously(auth).catch(e => console.error("Error al iniciar sesión anónimamente:", e));
-            }
-        } else {
-            console.warn("Firebase no inicializado: Falta __firebase_config.");
+        // Configurar canvas
+        function setupCanvas() {
+            canvas.width = 400;
+            canvas.height = 200;
         }
 
-        // --- Lógica de Cámara y Cambio de Facing Mode ---
+        // Actualizar valor de sensibilidad
+        sensitivitySlider.addEventListener('input', function() {
+            sensitivityValue.textContent = this.value;
+        });
 
-        /**
-         * Inicia el stream de la cámara con el modo de enfrentamiento especificado.
-         * @param {string} facingMode 'user' (delantera) o 'environment' (trasera).
-         */
-        export async function startCamera(facingMode) {
-            if (videoStream) {
-                // Detener todas las pistas de video del stream anterior antes de iniciar uno nuevo
-                videoStream.getTracks().forEach(track => track.stop());
-            }
-
+        // Iniciar cámara
+        async function initCamera() {
             try {
-                const constraints = {
-                    video: {
-                        width: { ideal: 640 },
+                // Detener stream anterior si existe
+                if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+                }
+
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        width: { ideal: 640 }, 
                         height: { ideal: 480 },
-                        facingMode: facingMode // <--- CLAVE PARA ELEGIR CÁMARA
-                    }
-                };
+                        facingMode: currentFacingMode
+                    } 
+                });
+                video.srcObject = stream;
                 
-                videoStream = await navigator.mediaDevices.getUserMedia(constraints);
-                video.srcObject = videoStream;
-                video.onloadedmetadata = () => {
-                    video.play();
-                    canvas.width = video.videoWidth;
-                    canvas.height = video.videoHeight;
-                    noCameraMessage.classList.add('hidden');
-                };
-
-                // 1. Actualiza el estado global de la cámara
-                currentCameraFacing = facingMode;
-                
-                // 2. Ajusta el efecto espejo (transform) y el texto del botón
-                if (facingMode === 'user') {
-                    canvas.style.transform = 'scaleX(-1)';
-                    startCamBtn.textContent = 'CÁMARA INICIADA (Frontal)';
-                    toggleCamBtn.textContent = 'Cambiar a Cámara Trasera';
-                } else {
-                    canvas.style.transform = 'scaleX(1)';
-                    startCamBtn.textContent = 'CÁMARA INICIADA (Trasera)';
-                    toggleCamBtn.textContent = 'Cambiar a Cámara Frontal';
-                }
-                
-                statusIndicator.textContent = 'CÁMARA ACTIVA';
-                statusIndicator.style.backgroundColor = '#d1fae5';
-                statusIndicator.style.color = '#065f46';
-
-                // Si la detección estaba activa, se reinicia para usar la nueva fuente
-                if (isDetecting) {
-                    toggleDetection(true);
-                }
-
-            } catch (err) {
-                console.error("Error al acceder a la cámara:", err);
-                // Intenta cambiar de cámara automáticamente si falla el modo seleccionado
-                if (err.name === "OverconstrainedError" && facingMode === 'environment') {
-                    // Si falla la trasera, intenta la frontal
-                    console.warn("Fallo cámara trasera. Intentando frontal.");
-                    startCamera('user');
-                    return; 
-                }
-                
-                statusIndicator.textContent = `ERROR: ${err.name}`;
-                statusIndicator.style.backgroundColor = '#fecaca';
-                statusIndicator.style.color = '#991b1b';
-                noCameraMessage.classList.remove('hidden');
+                video.addEventListener('loadedmetadata', function() {
+                    setupCanvas();
+                    startDetectionBtn.disabled = false;
+                    switchCameraBtn.disabled = false;
+                    startCameraBtn.disabled = true;
+                    const cameraType = currentFacingMode === 'user' ? 'Frontal' : 'Trasera';
+                    statusText.textContent = `✅ Cámara ${cameraType} iniciada. Listo para detectar movimiento.`;
+                });
+            } catch (error) {
+                console.error('Error al acceder a la cámara:', error);
+                statusText.textContent = '❌ Error al acceder a la cámara. Verifica los permisos.';
             }
         }
 
-        /**
-         * Alterna el modo de la cámara entre 'user' (delantera) y 'environment' (trasera).
-         */
-        export function toggleCamera() {
-            // Invierte el modo actual y llama a iniciar la cámara con el nuevo modo
-            const newFacingMode = currentCameraFacing === 'user' ? 'environment' : 'user';
-            startCamera(newFacingMode);
-        }
+        startCameraBtn.addEventListener('click', function() {
+            initCamera();
+        });
 
-        // --- Lógica de Detección de Movimiento (Frame Differencing) ---
+        // Cambiar entre cámara frontal y trasera
+        switchCameraBtn.addEventListener('click', function() {
+            // Cambiar el modo de cámara
+            currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+            
+            // Detener detección si está activa
+            if (isDetecting) {
+                isDetecting = false;
+                clearInterval(detectionInterval);
+                startDetectionBtn.disabled = false;
+                stopDetectionBtn.disabled = true;
+            }
+            
+            // Reiniciar cámara con el nuevo modo
+            initCamera();
+        });
 
-        /**
-         * Bucle principal de detección de movimiento, se ejecuta cada 100ms.
-         */
+        // Detectar movimiento
         function detectMotion() {
-            if (video.videoWidth === 0 || video.videoHeight === 0) return;
+            if (!isDetecting) return;
 
-            // 1. Dibuja el frame actual en el canvas
+            // Dibujar frame actual en canvas
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            let currentImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            let motionPixels = 0;
-            const threshold = parseInt(thresholdSlider.value);
-            const data = currentImageData.data;
-
+            const currentImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            
             if (previousImageData) {
-                const prevData = previousImageData.data;
-                const len = data.length;
-
-                // 2. Compara píxeles (Diferencia Absoluta)
-                for (let i = 0; i < len; i += 4) {
-                    const r1 = data[i];
-                    const g1 = data[i + 1];
-                    const b1 = data[i + 2];
-
-                    const r2 = prevData[i];
-                    const g2 = prevData[i + 1];
-                    const b2 = prevData[i + 2];
-
-                    // Fórmula de Diferencia: |R_n - R_{n-1}| + |G_n - G_{n-1}| + |B_n - B_{n-1}|
+                const threshold = parseInt(sensitivitySlider.value);
+                let motionPixels = 0;
+                
+                // Comparar píxeles
+                for (let i = 0; i < currentImageData.data.length; i += 4) {
+                    const r1 = previousImageData.data[i];
+                    const g1 = previousImageData.data[i + 1];
+                    const b1 = previousImageData.data[i + 2];
+                    
+                    const r2 = currentImageData.data[i];
+                    const g2 = currentImageData.data[i + 1];
+                    const b2 = currentImageData.data[i + 2];
+                    
                     const diff = Math.abs(r1 - r2) + Math.abs(g1 - g2) + Math.abs(b1 - b2);
-
-                    // 3. Aplica Umbral y Resalta
+                    
                     if (diff > threshold) {
                         motionPixels++;
-                        // Resaltar en rojo el píxel detectado en el canvas
-                        data[i] = 255;      // R
-                        data[i + 1] = 0;    // G
-                        data[i + 2] = 0;    // B
-                        data[i + 3] = 255;  // A
+                        // Resaltar píxeles con movimiento en rojo
+                        currentImageData.data[i] = 255;
+                        currentImageData.data[i + 1] = 0;
+                        currentImageData.data[i + 2] = 0;
                     }
                 }
-
-                // 4. Lógica del Cronómetro
-                if (startTime === 0 && motionPixels > MOVEMENT_THRESHOLD) {
-                    // INICIO DE MOVIMIENTO
-                    startTime = Date.now();
-                    endTime = 0; 
-                    statusIndicator.textContent = 'ESTADO: 🔴 MOVIMIENTO ACTIVO';
-                    statusIndicator.style.backgroundColor = '#fef2f2';
-                    statusIndicator.style.color = '#dc2626';
-                    resultsBox.innerHTML = `Movimiento detectado. Cronómetro iniciado...`;
-                    calculateBtn.classList.add('hidden');
-
-                } else if (startTime !== 0 && endTime === 0 && motionPixels < INACTIVE_THRESHOLD) {
-                    // FIN DE MOVIMIENTO (detención automática)
-                    endTime = Date.now();
-                    statusIndicator.textContent = 'ESTADO: ✅ MOVIMIENTO DETENIDO';
-                    statusIndicator.style.backgroundColor = '#ecfdf5';
-                    statusIndicator.style.color = '#059669';
-                    resultsBox.innerHTML = `Movimiento finalizado. Tiempo medido: ${((endTime - startTime) / 1000).toFixed(2)} segundos.`;
-                    calculateBtn.classList.remove('hidden');
+                
+                motionPixelCount = motionPixels;
+                
+                // Actualizar indicador visual
+                if (motionPixels > 100) {
+                    motionIndicator.classList.add('active');
+                    statusText.textContent = `🟢 Movimiento detectado: ${motionPixels} píxeles`;
+                    
+                    if (!startTime) {
+                        startTime = Date.now();
+                        statusText.textContent += ' - ⏱️ Cronómetro iniciado';
+                    }
+                } else {
+                    motionIndicator.classList.remove('active');
+                    if (motionPixelCount < 50 && startTime && !endTime) {
+                        endTime = Date.now();
+                        statusText.textContent = `⏹️ Movimiento finalizado. Tiempo: ${((endTime - startTime) / 1000).toFixed(2)}s`;
+                    }
                 }
-
-                // 5. Vuelve a dibujar la imagen con los resaltados rojos
+                
+                // Dibujar imagen procesada
                 ctx.putImageData(currentImageData, 0, 0);
-
             }
-            // Guarda el frame actual como el frame anterior para el siguiente ciclo
-            previousImageData = currentImageData;
-        }
-
-        /**
-         * Inicia o detiene el bucle de detección.
-         * @param {boolean} start Si es true, inicia; si es false, detiene.
-         */
-        export function toggleDetection(start) {
-            if (!videoStream) {
-                // Usar mensaje personalizado en lugar de alert()
-                resultsBox.innerHTML = '<span class="text-red-600 font-bold">Error:</span> Primero debe iniciar la cámara.';
-                return;
-            }
-
-            if (start && !isDetecting) {
-                // Iniciar detección
-                isDetecting = true;
-                startTime = 0;
-                endTime = 0;
-                previousImageData = null;
-                detectionInterval = setInterval(detectMotion, 100); // 10 FPS
-                
-                detectBtn.textContent = 'DETENER DETECCIÓN';
-                detectBtn.classList.replace('bg-emerald-600', 'bg-rose-600');
-                detectBtn.classList.replace('hover:bg-emerald-700', 'hover:bg-rose-700');
-                
-                statusIndicator.textContent = 'ESTADO: EN ESPERA';
-                statusIndicator.style.backgroundColor = '#f0f9ff';
-                statusIndicator.style.color = '#0284c7';
-                resultsBox.innerHTML = 'Cronómetro en espera. Mueve un objeto para iniciar...';
-                calculateBtn.classList.add('hidden');
-
-            } else if (!start && isDetecting) {
-                // Detener detección (forzada)
-                clearInterval(detectionInterval);
-                isDetecting = false;
-                
-                if (startTime !== 0 && endTime === 0) {
-                    // Si se detiene manualmente mientras está activo
-                    endTime = Date.now(); 
-                    resultsBox.innerHTML = `Detección detenida manualmente. Tiempo medido: ${((endTime - startTime) / 1000).toFixed(2)} segundos.`;
-                    calculateBtn.classList.remove('hidden');
-                }
-
-                detectBtn.textContent = 'REINICIAR DETECCIÓN DE MOVIMIENTO';
-                detectBtn.classList.replace('bg-rose-600', 'bg-emerald-600');
-                detectBtn.classList.replace('hover:bg-rose-700', 'hover:bg-emerald-700');
-            }
-        }
-
-        /**
-         * Ejecuta el cálculo final de la distancia.
-         */
-        export function calculateDistance() {
-            if (startTime === 0 || endTime === 0) {
-                resultsBox.innerHTML = 'Por favor, realiza y finaliza una medición primero.';
-                return;
-            }
-
-            const v = parseFloat(document.getElementById('velocityInput').value);
-            const t = (endTime - startTime) / 1000;
             
-            if (isNaN(v) || v <= 0) {
-                resultsBox.innerHTML = 'Por favor, ingresa una velocidad de referencia válida (mayor que 0).';
+            previousImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        }
+
+        // Iniciar detección
+        startDetectionBtn.addEventListener('click', function() {
+            isDetecting = true;
+            startTime = null;
+            endTime = null;
+            motionPixelCount = 0;
+            previousImageData = null;
+            
+            detectionInterval = setInterval(detectMotion, 100); // 10 FPS
+            
+            startDetectionBtn.disabled = true;
+            stopDetectionBtn.disabled = false;
+            statusText.textContent = '🔍 Detección iniciada. Muévete frente a la cámara.';
+        });
+
+        // Detener detección
+        stopDetectionBtn.addEventListener('click', function() {
+            isDetecting = false;
+            clearInterval(detectionInterval);
+            
+            if (startTime && !endTime) {
+                endTime = Date.now();
+            }
+            
+            startDetectionBtn.disabled = false;
+            stopDetectionBtn.disabled = true;
+            statusText.textContent = '⏸️ Detección detenida. Puedes calcular la distancia.';
+        });
+
+        // Calcular distancia
+        calculateBtn.addEventListener('click', function() {
+            if (!startTime) {
+                alert('❌ Primero debes detectar movimiento');
                 return;
             }
 
-            const e = v * t;
+            const velocity = parseFloat(document.getElementById('velocity').value);
+            const pixelToMeter = parseFloat(document.getElementById('pixelToMeter').value);
+            const timeInSeconds = endTime ? (endTime - startTime) / 1000 : (Date.now() - startTime) / 1000;
+            
+            // Calcular distancia usando e = v * t
+            const distance = velocity * timeInSeconds;
+            const motionInMeters = motionPixelCount * pixelToMeter;
 
-            resultsBox.innerHTML = `
-                <div class="font-bold text-lg text-blue-800 mb-2">Pasos del Cálculo ($e = v \cdot t$)</div>
-                <div class="space-y-1">
-                    <p>Tiempo medido ($t$): <span class="text-indigo-600">${t.toFixed(2)} s</span></p>
-                    <p>Velocidad de referencia ($v$): <span class="text-indigo-600">${v.toFixed(2)} m/s</span></p>
-                    <p class="font-extrabold text-xl text-green-700 pt-2">Distancia Recorrida ($e$): <span class="text-3xl">${e.toFixed(3)} m</span></p>
-                </div>
-            `;
-        }
+            // Mostrar resultados
+            document.getElementById('timeResult').textContent = `${timeInSeconds.toFixed(2)} segundos`;
+            document.getElementById('velocityResult').textContent = `${velocity} m/s`;
+            document.getElementById('distanceResult').textContent = `${distance.toFixed(2)} metros`;
+            document.getElementById('motionPixels').textContent = `${motionPixelCount} píxeles (${motionInMeters.toFixed(2)} m)`;
 
-        // Inicialización al cargar la ventana
-        window.onload = () => {
-             // Dejamos que el usuario inicie la cámara al hacer click por primera vez.
-        };
+            // Mostrar pasos del cálculo
+            document.getElementById('step1').textContent = `Tiempo detectado: t = ${timeInSeconds.toFixed(2)} s`;
+            document.getElementById('step2').textContent = `Velocidad configurada: v = ${velocity} m/s`;
+            document.getElementById('step3').textContent = `Distancia: e = v × t = ${velocity} × ${timeInSeconds.toFixed(2)} = ${distance.toFixed(2)} m`;
 
+            results.style.display = 'block';
+            calculationSteps.style.display = 'block';
+        });
+
+        // Limpiar recursos al cerrar
+        window.addEventListener('beforeunload', function() {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+            if (detectionInterval) {
+                clearInterval(detectionInterval);
+            }
+        });
+
+        // Inicialización
+        setupCanvas();
     </script>
 </body>
-</html>
